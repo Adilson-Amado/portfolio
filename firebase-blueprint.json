@@ -1,0 +1,145 @@
+{
+  "entities": {
+    "perfil": {
+      "title": "Perfil do Profissional",
+      "description": "Dados principais do profissional para a tela de entrada e slide Quem Sou.",
+      "type": "object",
+      "properties": {
+        "fotografia": { "type": "string", "description": "URL da imagem de perfil" },
+        "nomeCompleto": { "type": "string" },
+        "destaqueNome": { "type": "string", "description": "Palavra do nome em laranja (ex: PINTO)" },
+        "eyebrowEntrada": { "type": "string" },
+        "tagline": { "type": "string" },
+        "biografia": { "type": "string" },
+        "labelBotaoInicio": { "type": "string" },
+        "labelBotaoAcaoFinal": { "type": "string" },
+        "anoPortfolio": { "type": "string" }
+      },
+      "required": ["nomeCompleto", "tagline", "biografia"]
+    },
+    "servico": {
+      "title": "Serviço",
+      "description": "Serviços oferecidos no slide O Que Faço.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "titulo": { "type": "string" },
+        "descricao": { "type": "string" },
+        "corFundo": { "type": "string", "enum": ["azul-escuro", "laranja"] },
+        "ordem": { "type": "number" },
+        "ativo": { "type": "boolean" }
+      }
+    },
+    "projecto": {
+      "title": "Projecto",
+      "description": "Projectos do portfólio.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "titulo": { "type": "string" },
+        "categoria": { "type": "string" },
+        "nomeCliente": { "type": "string" },
+        "ano": { "type": "string" },
+        "imagemDestaque": { "type": "string" },
+        "emDestaque": { "type": "boolean" },
+        "ordem": { "type": "number" }
+      }
+    },
+    "metrica": {
+      "title": "Métrica",
+      "description": "Números de performance.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "valor": { "type": "string" },
+        "sufixo": { "type": "string" },
+        "legenda": { "type": "string" },
+        "ordem": { "type": "number" }
+      }
+    },
+    "depoimento": {
+      "title": "Depoimento",
+      "description": "Testemunhos de clientes.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "texto": { "type": "string" },
+        "autor": { "type": "string" },
+        "cargo": { "type": "string" },
+        "organizacao": { "type": "string" },
+        "iniciais": { "type": "string" },
+        "emDestaque": { "type": "boolean" },
+        "ordem": { "type": "number" }
+      }
+    },
+    "contacto": {
+      "title": "Contacto",
+      "description": "Canais de contacto no slide final.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "tipo": { "type": "string" },
+        "etiqueta": { "type": "string" },
+        "valor": { "type": "string" },
+        "link": { "type": "string" },
+        "ordem": { "type": "number" }
+      }
+    },
+    "sector": {
+      "title": "Sector de Actuação",
+      "description": "Sectores para o slide Clientes e Sectores.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "nome": { "type": "string" },
+        "ordem": { "type": "number" }
+      }
+    },
+    "pais": {
+      "title": "País de Atuação",
+      "description": "Países para o slide Clientes e Sectores.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "nome": { "type": "string" },
+        "bandeira": { "type": "string", "description": "Emoji ou código da bandeira" },
+        "descricao": { "type": "string" },
+        "ordem": { "type": "number" }
+      }
+    },
+    "ferramenta": {
+      "title": "Ferramenta",
+      "description": "Software do slide Stack/Ferramentas.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "nome": { "type": "string" },
+        "grupo": { "type": "string", "enum": ["adobe", "outras"] },
+        "ordem": { "type": "number" }
+      }
+    },
+    "configuracao": {
+      "title": "Configuração Global",
+      "description": "Textos globais e configurações de sistema.",
+      "type": "object",
+      "properties": {
+        "nomeAgencia": { "type": "string" },
+        "servicosRodape": { "type": "string" },
+        "processoTrabalho": { "type": "string" },
+        "etiquetaRodapeContacto": { "type": "string" }
+      }
+    }
+  },
+  "firestore": {
+    "perfil/principal": { "schema": "perfil", "description": "Documento único de perfil" },
+    "servicos/{servicoId}": { "schema": "servico", "description": "Lista de serviços" },
+    "projectos/{projectId}": { "schema": "projecto", "description": "Lista de projectos" },
+    "metricas/{metricaId}": { "schema": "metrica", "description": "Lista de métricas" },
+    "depoimentos/{depoimentoId}": { "schema": "depoimento", "description": "Lista de depoimentos" },
+    "contactos/{contactoId}": { "schema": "contacto", "description": "Lista de contactos" },
+    "sectores/{sectorId}": { "schema": "sector", "description": "Lista de sectores de actuação" },
+    "paises/{paisId}": { "schema": "pais", "description": "Lista de países de atuação" },
+    "ferramentas/{ferramentaId}": { "schema": "ferramenta", "description": "Lista de ferramentas de trabalho" },
+    "configuracoes/global": { "schema": "configuracao", "description": "Configurações globais" }
+  }
+}

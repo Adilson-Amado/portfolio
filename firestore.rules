@@ -1,0 +1,122 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // 0. Global Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // 0.1 Helpers
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    
+    function isAdmin() {
+      return isSignedIn() && (
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid)) ||
+        request.auth.token.email == 'adilsonamado.aa@gmail.com'
+      );
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // 1. Perfil
+    match /perfil/principal {
+      allow read: if true;
+      allow write: if isAdmin() && isValidPerfil(incoming());
+    }
+
+    function isValidPerfil(data) {
+      return data.keys().hasAll(['nomeCompleto', 'tagline', 'biografia'])
+        && data.nomeCompleto is string && data.nomeCompleto.size() <= 100
+        && data.tagline is string && data.tagline.size() <= 200
+        && data.biografia is string && data.biografia.size() <= 1000;
+    }
+
+    // 2. Serviços
+    match /servicos/{servicoId} {
+      allow read: if true;
+      allow write: if isAdmin() && isValidId(servicoId) && isValidServico(incoming());
+    }
+
+    function isValidServico(data) {
+      return data.titulo is string && data.titulo.size() <= 100
+        && data.descricao is string && data.descricao.size() <= 500
+        && data.ordem is number;
+    }
+
+    // 3. Projectos
+    match /projectos/{projectId} {
+      allow read: if true;
+      allow write: if isAdmin() && isValidId(projectId) && isValidProjecto(incoming());
+    }
+
+    function isValidProjecto(data) {
+      return data.titulo is string && data.titulo.size() <= 100
+        && data.categoria is string && data.categoria.size() <= 50
+        && data.ordem is number;
+    }
+
+    // 4. Métricas
+    match /metricas/{metricaId} {
+      allow read: if true;
+      allow write: if isAdmin() && isValidId(metricaId) && isValidMetrica(incoming());
+    }
+
+    function isValidMetrica(data) {
+      return data.valor is string && data.valor.size() <= 20
+        && data.legenda is string && data.legenda.size() <= 50
+        && data.ordem is number;
+    }
+
+    // 5. Depoimentos
+    match /depoimentos/{depoimentoId} {
+      allow read: if true;
+      allow write: if isAdmin() && isValidId(depoimentoId) && isValidDepoimento(incoming());
+    }
+
+    function isValidDepoimento(data) {
+      return data.texto is string && data.texto.size() <= 1000
+        && data.autor is string && data.autor.size() <= 100
+        && data.ordem is number;
+    }
+
+    // 6. Contactos
+    match /contactos/{contactoId} {
+      allow read: if true;
+      allow write: if isAdmin() && isValidId(contactoId) && isValidContacto(incoming());
+    }
+
+    function isValidContacto(data) {
+      return data.valor is string && data.valor.size() <= 200
+        && data.ordem is number;
+    }
+
+    // 7. Configurações
+    match /configuracoes/global {
+      allow read: if true;
+      allow write: if isAdmin() && isValidConfig(incoming());
+    }
+
+    function isValidConfig(data) {
+      return data.nomeAgencia is string && data.nomeAgencia.size() <= 100;
+    }
+
+    // 8. Admins (Locked down)
+    match /admins/{adminId} {
+      allow read: if isSignedIn() && (request.auth.uid == adminId || isAdmin());
+      allow write: if false; // Gerir apenas via consola ou admin root
+    }
+  }
+}
