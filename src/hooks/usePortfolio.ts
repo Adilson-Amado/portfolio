@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react';
-import { db, subscribeToCollection } from '../lib/firebase';
-import { doc, onSnapshot } from 'firebase/firestore';
+import { useEffect, useState, useRef } from 'react';
+import { db } from '../lib/firebase';
+import { doc, getDoc, getDocs, collection, query, orderBy } from 'firebase/firestore';
 
 export function usePortfolio() {
   const [perfil, setPerfil] = useState<any>(undefined);
@@ -15,68 +15,47 @@ export function usePortfolio() {
   const [parceiros, setParceiros] = useState<any[]>([]);
   const [config, setConfig] = useState<any>(undefined);
   const [loading, setLoading] = useState(true);
+  const initializedRef = useRef(false);
 
   useEffect(() => {
-    const unsubPerfil = onSnapshot(doc(db, 'perfil', 'principal'), (s) => {
-      if (s.exists()) setPerfil(s.data());
-    });
+    if (initializedRef.current) return;
+    initializedRef.current = true;
 
-    const unsubConfig = onSnapshot(doc(db, 'configuracoes', 'global'), (s) => {
-      if (s.exists()) setConfig(s.data());
-    });
+    const fetchData = async () => {
+      try {
+        const [perfilSnap, configSnap, servicosSnap, projectosSnap, metricasSnap, contactosSnap, sectoresSnap, paisesSnap, ferramentasSnap, depoimentosSnap, parceirosSnap] = await Promise.all([
+          getDoc(doc(db, 'perfil', 'principal')),
+          getDoc(doc(db, 'configuracoes', 'global')),
+          getDocs(query(collection(db, 'servicos'), orderBy('ordem', 'asc'))),
+          getDocs(query(collection(db, 'projectos'), orderBy('ordem', 'asc'))),
+          getDocs(query(collection(db, 'metricas'), orderBy('ordem', 'asc'))),
+          getDocs(query(collection(db, 'contactos'), orderBy('ordem', 'asc'))),
+          getDocs(query(collection(db, 'sectores'), orderBy('ordem', 'asc'))),
+          getDocs(query(collection(db, 'paises'), orderBy('ordem', 'asc'))),
+          getDocs(query(collection(db, 'ferramentas'), orderBy('ordem', 'asc'))),
+          getDocs(query(collection(db, 'depoimentos'), orderBy('ordem', 'asc'))),
+          getDocs(query(collection(db, 'parceiros'), orderBy('ordem', 'asc')))
+        ]);
 
-    const unsubServicos = subscribeToCollection('servicos', (list) => {
-      if (list.length > 0) setServicos(list);
-    });
-
-    const unsubProjectos = subscribeToCollection('projectos', (list) => {
-      if (list.length > 0) setProjectos(list);
-    });
-
-    const unsubMetricas = subscribeToCollection('metricas', (list) => {
-      if (list.length > 0) setMetricas(list);
-    });
-
-    const unsubContactos = subscribeToCollection('contactos', (list) => {
-      if (list.length > 0) setContactos(list);
-    });
-
-    const unsubSectores = subscribeToCollection('sectores', (list) => {
-      if (list.length > 0) setSectores(list);
-    });
-
-    const unsubPaises = subscribeToCollection('paises', (list) => {
-      if (list.length > 0) setPaises(list);
-    });
-
-    const unsubFerramentas = subscribeToCollection('ferramentas', (list) => {
-      if (list.length > 0) setFerramentas(list);
-    });
-
-    const unsubDepoimentos = subscribeToCollection('depoimentos', (list) => {
-      if (list.length > 0) setDepoimentos(list);
-    });
-
-    const unsubParceiros = subscribeToCollection('parceiros', (list) => {
-      if (list.length > 0) setParceiros(list);
-    });
-
-    const timer = setTimeout(() => setLoading(false), 3000);
-
-    return () => {
-      unsubPerfil();
-      unsubConfig();
-      unsubServicos();
-      unsubProjectos();
-      unsubMetricas();
-      unsubContactos();
-      unsubSectores();
-      unsubPaises();
-      unsubFerramentas();
-      unsubDepoimentos();
-      unsubParceiros();
-      clearTimeout(timer);
+        if (perfilSnap.exists()) setPerfil(perfilSnap.data());
+        if (configSnap.exists()) setConfig(configSnap.data());
+        setServicos(servicosSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+        setProjectos(projectosSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+        setMetricas(metricasSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+        setContactos(contactosSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+        setSectores(sectoresSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+        setPaises(paisesSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+        setFerramentas(ferramentasSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+        setDepoimentos(depoimentosSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+        setParceiros(parceirosSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+      } catch (err) {
+        console.error('Error loading portfolio:', err);
+      } finally {
+        setLoading(false);
+      }
     };
+
+    fetchData();
   }, []);
 
   return { perfil, servicos, metricas, projectos, contactos, sectores, paises, ferramentas, depoimentos, parceiros, config, loading };
