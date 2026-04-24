@@ -14,11 +14,6 @@ import Papa from 'papaparse';
 import * as mammoth from 'mammoth';
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
-import { 
-  PERFIL_DATA, SERVICOS_DATA, METRICAS_DATA, PROJECTOS_DATA, 
-  SECTORES_DATA, PAISES_DATA, DEPOIMENTOS_DATA, FERRAMENTAS_DATA, 
-  CONTACTOS_DATA, CONFIG_GLOBALS, PARCEIROS_DATA
-} from '../constants';
 
 export default function AdminPanel({ onClose }: { onClose: () => void }) {
   const [user, setUser] = useState<any>(null);
@@ -381,22 +376,66 @@ INSTRUÇÕES:
     try {
       const batch = writeBatch(db);
 
-      // Single docs
+      const PERFIL_DATA = {
+        fotografia: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?q=80&w=800&auto=format&fit=crop',
+        nomeCompleto: 'ADILSON PINTO AMADO',
+        destaqueNome: 'PINTO',
+        eyebrowEntrada: 'DESIGNER, LUANDA, ANGOLA',
+        tagline: 'Criador de identidades visuais que comunicam, vendem e ficam na memória. Mais de 5 anos a transformar marcas em Angola, Portugal e Alemanha.',
+        biografia: 'Designer com mais de 5 anos de experiência especializado em identidade visual e comunicação criativa. Apaixonado por transformar conceitos em marcas poderosas.',
+        labelBotaoInicio: 'Começar',
+        labelBotaoAcaoFinal: 'Solicitar Orçamento',
+        anoPortfolio: '2025'
+      };
+
+      const CONFIG_GLOBALS = {
+        nomeAgencia: 'A-DESIGN ANGOLA',
+        servicosRodape: 'Identidade Visual • Branding • Design Gráfico • Redes Sociais',
+        processoTrabalho: 'Processo de trabalho: Briefing, Conceito, Desenvolvimento, Revisão e Entrega. Comunicação transparente em cada etapa.',
+        etiquetaRodapeContacto: 'VAMOS TRABALHAR JUNTOS'
+      };
+
+      const listMappings: any = {
+        servicos: [
+          { id: '1', titulo: 'IDENTIDADE VISUAL', descricao: 'Criação de logos, paletas de cor, tipografia e manual de marca.', corFundo: 'azul-escuro', ordem: 1, ativo: true },
+          { id: '2', titulo: 'DESIGN GRÁFICO', descricao: 'Artes para redes sociais, cartazes, flyers e materiais.', corFundo: 'laranja', ordem: 2, ativo: true }
+        ],
+        projectos: [
+          { id: '1', imagemDestaque: 'https://images.unsplash.com/photo-1626785774573-4b799315345d?q=80&w=800', titulo: 'IDENTIDADE KERO', nomeCliente: 'KERO', categoria: 'BRANDING', descricao: 'Redesign completo da identidade visual.', ano: '2024', emDestaque: true, ordem: 1, ativo: true }
+        ],
+        metricas: [
+          { id: '1', valor: '5', sufixo: '+', legenda: 'Anos de\nExperiência', ordem: 1, ativo: true },
+          { id: '2', valor: '50', sufixo: '+', legenda: 'Projetos\nConcluídos', ordem: 2, ativo: true },
+          { id: '3', valor: '3', sufixo: '', legenda: 'Países de\nAtuação', ordem: 3, ativo: true },
+          { id: '4', valor: '100', sufixo: '%', legenda: 'Satisfação\nTotal', ordem: 4, ativo: true }
+        ],
+        depoimentos: [
+          { id: '1', texto: 'O Adilson conseguiu captar exatamente a essência da nossa marca.', autor: 'Helena Santos', cargo: 'Diretora de Marketing', organizacao: 'Kero', iniciais: 'HS', emDestaque: true, ordem: 1, ativo: true }
+        ],
+        contactos: [
+          { id: '1', etiqueta: 'Email', valor: 'contato@adesign.ao', tipo: 'email', link: 'mailto:contato@adesign.ao', ordem: 1, ativo: true },
+          { id: '2', etiqueta: 'WhatsApp', valor: '+244 9XX XXX XXX', tipo: 'whatsapp', link: 'https://wa.me/244900000000', ordem: 2, ativo: true }
+        ],
+        sectores: [
+          { id: '1', nome: 'Retalho', ordem: 1, ativo: true },
+          { id: '2', nome: 'Energia', ordem: 2, ativo: true },
+          { id: '3', nome: 'Telecomunicações', ordem: 3, ativo: true }
+        ],
+        paises: [
+          { id: '1', nome: 'Angola', bandeira: '🇦🇴', descricao: 'Mercado Principal', ordem: 1, ativo: true },
+          { id: '2', nome: 'Portugal', bandeira: '🇵🇹', descricao: 'Presença Internacional', ordem: 2, ativo: true }
+        ],
+        ferramentas: [
+          { id: '1', nome: 'Adobe Illustrator', grupo: 'adobe', ordem: 1, ativo: true },
+          { id: '2', nome: 'Figma', grupo: 'outras', ordem: 2, ativo: true }
+        ],
+        parceiros: [
+          { id: '1', nome: 'KERO', logo: 'https://images.unsplash.com/photo-1542291026-7eec264c27ff?w=200&auto=format&fit=crop', link: 'https://kero.com.ao', ordem: 1, ativo: true }
+        ]
+      };
+
       batch.set(doc(db, 'perfil', 'principal'), { ...PERFIL_DATA, updatedAt: new Date().toISOString() });
       batch.set(doc(db, 'configuracoes', 'global'), { ...CONFIG_GLOBALS, updatedAt: new Date().toISOString() });
-
-      // Collections
-      const listMappings: any = {
-        servicos: SERVICOS_DATA,
-        projectos: PROJECTOS_DATA,
-        metricas: METRICAS_DATA,
-        depoimentos: DEPOIMENTOS_DATA,
-        contactos: CONTACTOS_DATA,
-        sectores: SECTORES_DATA,
-        paises: PAISES_DATA,
-        ferramentas: FERRAMENTAS_DATA,
-        parceiros: PARCEIROS_DATA
-      };
 
       for (const [col, data] of Object.entries(listMappings)) {
         if (Array.isArray(data)) {
@@ -551,6 +590,16 @@ INSTRUÇÕES:
 
   return (
     <div className="space-y-12">
+      <div className="flex justify-end">
+        <button 
+          onClick={seedFromConstants}
+          disabled={importing}
+          className="bg-brand-dark text-white px-6 py-3 rounded-xl font-bold uppercase tracking-widest text-[9px] hover:bg-brand-orange transition-all disabled:opacity-50 flex items-center gap-2 shadow-lg"
+        >
+          {importing ? <Loader2 className="animate-spin h-3 w-3" /> : <Database className="h-3 w-3" />}
+          Inicializar Dados Base
+        </button>
+      </div>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
         {/* Bulk Image Upload Section */}
         <div className="p-8 bg-brand-orange/5 rounded-2xl border border-brand-orange/10 flex flex-col items-center text-center">

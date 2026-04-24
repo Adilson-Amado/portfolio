@@ -1,38 +1,30 @@
 import { useEffect, useState } from 'react';
 import { db, subscribeToCollection } from '../lib/firebase';
 import { doc, onSnapshot } from 'firebase/firestore';
-import { 
-  PERFIL_DATA as STATIC_PERFIL,
-  SERVICOS_DATA as STATIC_SERVICOS,
-  METRICAS_DATA as STATIC_METRICAS,
-  PROJECTOS_DATA as STATIC_PROJECTOS,
-  CONTACTOS_DATA as STATIC_CONTACTOS,
-  CONFIG_GLOBALS as STATIC_CONFIG
-} from '../constants';
 
 export function usePortfolio() {
-  const [perfil, setPerfil] = useState(STATIC_PERFIL);
-  const [servicos, setServicos] = useState(STATIC_SERVICOS);
-  const [metricas, setMetricas] = useState(STATIC_METRICAS);
-  const [projectos, setProjectos] = useState(STATIC_PROJECTOS);
-  const [contactos, setContactos] = useState(STATIC_CONTACTOS);
+  const [perfil, setPerfil] = useState<any>(null);
+  const [servicos, setServicos] = useState<any[]>([]);
+  const [metricas, setMetricas] = useState<any[]>([]);
+  const [projectos, setProjectos] = useState<any[]>([]);
+  const [contactos, setContactos] = useState<any[]>([]);
   const [sectores, setSectores] = useState<any[]>([]);
   const [paises, setPaises] = useState<any[]>([]);
   const [ferramentas, setFerramentas] = useState<any[]>([]);
   const [depoimentos, setDepoimentos] = useState<any[]>([]);
   const [parceiros, setParceiros] = useState<any[]>([]);
-  const [config, setConfig] = useState(STATIC_CONFIG);
+  const [config, setConfig] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     // Escutar Perfil
     const unsubPerfil = onSnapshot(doc(db, 'perfil', 'principal'), (s) => {
-      if (s.exists()) setPerfil({ ...STATIC_PERFIL, ...s.data() });
+      if (s.exists()) setPerfil(s.data());
     });
 
     // Escutar Config
     const unsubConfig = onSnapshot(doc(db, 'configuracoes', 'global'), (s) => {
-      if (s.exists()) setConfig({ ...STATIC_CONFIG, ...s.data() });
+      if (s.exists()) setConfig(s.data());
       setLoading(false);
     });
 
