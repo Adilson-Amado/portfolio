@@ -17,6 +17,17 @@ export default function App() {
   const [showAdmin, setShowAdmin] = useState(false);
   const totalSlides = 9;
 
+  if (loading) {
+    return (
+      <div className="fixed inset-0 bg-white z-[200] flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-16 h-16 border-4 border-brand-orange border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+          <p className="text-sm font-bold uppercase tracking-widest text-brand-dark/40">A carregar...</p>
+        </div>
+      </div>
+    );
+  }
+
   const nextSlide = () => setCurrentSlide((prev) => Math.min(prev + 1, totalSlides - 1));
   const prevSlide = () => setCurrentSlide((prev) => Math.max(prev - 1, 0));
 
@@ -162,8 +173,8 @@ function EntryScreen({
   onLogoClick: () => void,
   key?: string
 }) {
-  const nomePartes = perfil.nomeCompleto.split(' ');
-  const sobrenomeDestaque = perfil.destaqueNome || (nomePartes.length > 2 ? nomePartes[1] : nomePartes[nomePartes.length - 1]);
+  const nomePartes = (perfil?.nomeCompleto || 'Adilson Pinto Amado').split(' ');
+  const sobrenomeDestaque = perfil?.destaqueNome || (nomePartes.length > 2 ? nomePartes[1] : nomePartes[nomePartes.length - 1]);
 
   return (
     <motion.div 
@@ -174,8 +185,8 @@ function EntryScreen({
     >
       {/* Header */}
       <header className="flex justify-between p-6 lg:p-10 text-[9px] lg:text-[10px] font-bold tracking-[0.4em] lg:tracking-[0.6em] uppercase opacity-40 shrink-0">
-        <div onClick={onLogoClick} className="cursor-pointer hover:opacity-100 transition-opacity">{config.nomeAgencia}</div>
-        <div className="hidden sm:block">PORTFOLIO {perfil.anoPortfolio || '2025'}</div>
+        <div onClick={onLogoClick} className="cursor-pointer hover:opacity-100 transition-opacity">{config?.nomeAgencia || 'A-DESIGN'}</div>
+        <div className="hidden sm:block">PORTFOLIO {perfil?.anoPortfolio || '2025'}</div>
       </header>
 
       {/* Main Content */}
@@ -454,16 +465,16 @@ function SlideWrapper({
   );
 }
 
-/* 4. SLIDE 01 - QUEM SOU */
+/* SLIDE 01 - QUEM SOU */
 function Slide01WhoIAm({ perfil }: { perfil: any }) {
-  const nomePartes = perfil.nomeCompleto.split(' ');
+  const nomePartes = (perfil?.nomeCompleto || 'Adilson Pinto Amado').split(' ');
   return (
-    <SlideWrapper eyebrow="Quem Sou" title={<>{nomePartes[0]} <br /> {perfil.destaqueNome || nomePartes[1]}</>} isDark>
+    <SlideWrapper eyebrow="Quem Sou" title={<>{nomePartes[0]} <br /> {perfil?.destaqueNome || nomePartes[1]}</>} isDark>
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-20 items-start lg:items-center flex-1 h-full mt-2 lg:mt-4">
         <div className="lg:col-span-1 border-l border-white/20 h-full hidden lg:block" />
         <div className="lg:col-span-6 text-white flex flex-col justify-center">
           <p className="text-xs lg:text-xl lg:opacity-90 leading-relaxed font-medium">
-             {perfil.biografia}
+             {perfil?.biografia || 'Designer com experiência em identidade visual e comunicação criativa.'}
           </p>
           <div className="mt-4 lg:mt-12 flex gap-2 lg:gap-3 flex-wrap">
             {['IDENTIDADE VISUAL', 'BRANDING', 'DESIGN'].map(t => (

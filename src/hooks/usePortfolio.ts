@@ -3,7 +3,7 @@ import { db, subscribeToCollection } from '../lib/firebase';
 import { doc, onSnapshot } from 'firebase/firestore';
 
 export function usePortfolio() {
-  const [perfil, setPerfil] = useState<any>(null);
+  const [perfil, setPerfil] = useState<any>(undefined);
   const [servicos, setServicos] = useState<any[]>([]);
   const [metricas, setMetricas] = useState<any[]>([]);
   const [projectos, setProjectos] = useState<any[]>([]);
@@ -13,22 +13,18 @@ export function usePortfolio() {
   const [ferramentas, setFerramentas] = useState<any[]>([]);
   const [depoimentos, setDepoimentos] = useState<any[]>([]);
   const [parceiros, setParceiros] = useState<any[]>([]);
-  const [config, setConfig] = useState<any>(null);
+  const [config, setConfig] = useState<any>(undefined);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Escutar Perfil
     const unsubPerfil = onSnapshot(doc(db, 'perfil', 'principal'), (s) => {
       if (s.exists()) setPerfil(s.data());
     });
 
-    // Escutar Config
     const unsubConfig = onSnapshot(doc(db, 'configuracoes', 'global'), (s) => {
       if (s.exists()) setConfig(s.data());
-      setLoading(false);
     });
 
-    // Escutar Coleções
     const unsubServicos = subscribeToCollection('servicos', (list) => {
       if (list.length > 0) setServicos(list);
     });
@@ -65,6 +61,8 @@ export function usePortfolio() {
       if (list.length > 0) setParceiros(list);
     });
 
+    const timer = setTimeout(() => setLoading(false), 3000);
+
     return () => {
       unsubPerfil();
       unsubConfig();
@@ -77,6 +75,7 @@ export function usePortfolio() {
       unsubFerramentas();
       unsubDepoimentos();
       unsubParceiros();
+      clearTimeout(timer);
     };
   }, []);
 
