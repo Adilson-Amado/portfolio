@@ -5,17 +5,21 @@
 
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { ArrowRight, ChevronLeft, ChevronRight, X, Mail, Phone, Instagram, Quote, Settings } from 'lucide-react';
+import { ArrowRight, ChevronLeft, ChevronRight, X, Mail, Phone, Instagram, Quote, CheckCircle2, FileDown, RefreshCw } from 'lucide-react';
 import { usePortfolio } from './hooks/usePortfolio';
+import { supabase } from './lib/supabase';
+import { analytics } from './lib/analytics';
 import AdminPanel from './components/AdminPanel';
+import adPortrait from './assets/ad.png';
 
 export default function App() {
-  const { perfil, servicos, metricas, projectos, contactos, sectores, paises, ferramentas, depoimentos, parceiros, config, slides, quemSou, loading } = usePortfolio();
+  const { perfil, servicos, metricas, projectos, contactos, sectores, paises, ferramentas, depoimentos, parceiros, config, slides, quemSou, lastUpdate, loading } = usePortfolio();
   const [view, setView] = useState<'entry' | 'presentation'>('entry');
   const [currentSlide, setCurrentSlide] = useState(0);
   const [isPortrait, setIsPortrait] = useState(false);
   const [showAdmin, setShowAdmin] = useState(false);
   const [adminClicks, setAdminClicks] = useState(0);
+  const [showContactForm, setShowContactForm] = useState(false);
   const totalSlides = 9;
 
   useEffect(() => {
@@ -40,12 +44,64 @@ export default function App() {
       if (view === 'presentation') {
         if (e.key === 'ArrowRight') nextSlide();
         if (e.key === 'ArrowLeft') prevSlide();
-        if (e.key === 'Escape') setView('entry');
+        if (e.key === 'Escape') {
+            setView('entry');
+            if (document.exitFullscreen) {
+              document.exitFullscreen().catch(() => {});
+            }
+          }
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [view]);
+
+  // Rastrear visualizações de slides
+  useEffect(() => {
+    if (view === 'presentation') {
+      analytics.trackSlideView(currentSlide);
+    }
+  }, [currentSlide, view]);
+
+  // Real-time code version check
+  const [currentCodeVersion, setCurrentCodeVersion] = useState<string>('');
+  const [showUpdatePrompt, setShowUpdatePrompt] = useState(false);
+  const [pendingVersion, setPendingVersion] = useState<string | null>(null);
+
+  useEffect(() => {
+    const checkCodeVersion = async () => {
+      const { data } = await supabase
+        .from('code_versions')
+        .select('version, is_deployed')
+        .eq('is_deployed', true)
+        .single();
+      if (data?.version) {
+        if (!currentCodeVersion) {
+          setCurrentCodeVersion(data.version);
+        } else if (data.version !== currentCodeVersion) {
+          setPendingVersion(data.version);
+          setShowUpdatePrompt(true);
+        }
+      }
+    };
+    checkCodeVersion();
+
+    const channel = supabase
+      .channel('code_version_updates')
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'code_versions' }, (payload) => {
+        if (payload.new?.is_deployed === true && payload.new.version !== currentCodeVersion) {
+          setPendingVersion(payload.new.version);
+          setShowUpdatePrompt(true);
+        }
+      })
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
+  }, [currentCodeVersion]);
+
+  const handleUpdateApp = () => {
+    window.location.reload();
+  };
 
   if (loading) {
     return (
@@ -58,19 +114,35 @@ export default function App() {
     );
   }
 
+  if (showUpdatePrompt) {
+    return (
+      <div className="fixed inset-0 bg-brand-dark z-[200] flex items-center justify-center p-4">
+        <div className="text-center max-w-md">
+          <RefreshCw className="h-16 w-16 text-brand-orange mx-auto mb-4 animate-spin" />
+          <h1 className="text-2xl font-bold text-white mb-2">Atualização Disponivel</h1>
+          <p className="text-gray-400 mb-6">
+            Nova versão {currentCodeVersion} está disponível. Clique para aplicar.
+          </p>
+          <button
+            onClick={handleUpdateApp}
+            className="bg-brand-orange text-white font-bold py-3 px-8 rounded-full hover:bg-brand-orange/90 transition-colors"
+          >
+            Atualizar Agora
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   const handleStart = async () => {
     setView('presentation');
     setCurrentSlide(0);
-
-    try {
-      if (document.documentElement.requestFullscreen) {
-        await document.documentElement.requestFullscreen();
-      }
-      if ((screen.orientation as any) && (screen.orientation as any).lock) {
-        await (screen.orientation as any).lock('landscape');
-      }
-    } catch (e) {
-      console.log("Auto-rotate/Fullscreen not supported or blocked by browser.");
+    
+    // Aplicar tela cheia
+    if (document.documentElement.requestFullscreen) {
+      document.documentElement.requestFullscreen().catch(() => {});
+    } else if (document.body.requestFullscreen) {
+      document.body.requestFullscreen().catch(() => {});
     }
   };
 
@@ -87,7 +159,7 @@ export default function App() {
   };
 
   return (
-    <div className="relative h-screen w-full bg-white text-brand-dark selection:bg-brand-orange selection:text-white overflow-hidden font-sans">
+    <div className="relative min-h-screen w-full bg-brand-cream text-brand-dark selection:bg-brand-orange selection:text-white font-sans">
       <AnimatePresence mode="wait">
         {view === 'entry' ? (
           <EntryScreen 
@@ -97,6 +169,8 @@ export default function App() {
             config={config} 
             metricas={metricas}
             onLogoClick={handleLogoClick}
+            showContactForm={showContactForm}
+            setShowContactForm={setShowContactForm}
           />
         ) : (
           <>
@@ -119,7 +193,12 @@ export default function App() {
               totalSlides={totalSlides}
               onPrev={prevSlide}
               onNext={nextSlide}
-              onClose={() => setView('entry')}
+              onClose={() => {
+                setView('entry');
+                if (document.exitFullscreen) {
+                  document.exitFullscreen().catch(() => {});
+                }
+              }}
               perfil={perfil}
               servicos={servicos}
               metricas={metricas}
@@ -141,14 +220,135 @@ export default function App() {
       <AnimatePresence>
         {showAdmin && <AdminPanel onClose={() => setShowAdmin(false)} />}
       </AnimatePresence>
+
+      {/* Notificação de atualizações em tempo real */}
+      <AnimatePresence>
+        {lastUpdate && (
+          <motion.div
+            initial={{ opacity: 0, y: 50, scale: 0.8 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 50, scale: 0.8 }}
+            transition={{ type: "spring", stiffness: 300, damping: 30 }}
+            className="fixed bottom-4 right-4 z-[150] bg-brand-dark text-white px-4 py-3 rounded-lg shadow-lg flex items-center gap-3 max-w-sm"
+          >
+            <div className="w-2 h-2 bg-brand-orange rounded-full animate-pulse" />
+            <div className="flex-1">
+              <p className="text-xs font-bold uppercase tracking-wider opacity-60">Atualização CMS</p>
+              <p className="text-sm font-medium">{lastUpdate}</p>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Versão do código em execução */}
+      {currentCodeVersion && (
+        <div className="fixed bottom-2 left-2 z-[100] text-[10px] text-brand-dark/20 font-mono">
+          v{currentCodeVersion}
+        </div>
+      )}
       
-      {/* Hidden Admin Access */}
-      <button 
-        onClick={() => setShowAdmin(true)} 
-        className="fixed bottom-4 left-4 p-3 opacity-0 hover:opacity-20 transition-all z-50 text-brand-dark"
-      >
-        <Settings className="h-5 w-5" />
-      </button>
+    </div>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+/*                        1.5. ANIMATED PORTFOLIO TITLE                     */
+/* -------------------------------------------------------------------------- */
+
+function AnimatedPortfolio() {
+  const [text, setText] = useState("");
+  const [mode, setMode] = useState<'variant' | 'official'>('variant');
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [styleIndex, setStyleIndex] = useState(0);
+  const fullText = "Portfolio";
+
+  const styleVariants = [
+    { port: "font-display tracking-tight", folio: "font-aktura italic tracking-normal" },
+    { port: "font-display tracking-tight", folio: "font-barett tracking-tight" },
+    { port: "font-aktura tracking-tight", folio: "font-display italic tracking-tight" },
+    { port: "font-ghitalk tracking-normal", folio: "font-display tracking-tight" }
+  ];
+
+  useEffect(() => {
+    if (mode === 'official') {
+      if (!isDeleting && text === fullText) {
+        const holdTimeout = setTimeout(() => setIsDeleting(true), 10000);
+        return () => clearTimeout(holdTimeout);
+      }
+
+      if (isDeleting && text.length === 0) {
+        setMode('variant');
+        setStyleIndex(0);
+        setIsDeleting(false);
+        return;
+      }
+
+      const officialTimeout = setTimeout(() => {
+        if (isDeleting) {
+          setText((current) => current.slice(0, -1));
+          return;
+        }
+
+        setText(fullText.slice(0, text.length + 1));
+      }, isDeleting ? 45 : 110);
+
+      return () => clearTimeout(officialTimeout);
+    }
+
+    if (!isDeleting && text === fullText) {
+      const pauseTimeout = setTimeout(() => setIsDeleting(true), 1400);
+      return () => clearTimeout(pauseTimeout);
+    }
+
+    if (isDeleting && text.length === 0) {
+      if (styleIndex === styleVariants.length - 1) {
+        setMode('official');
+        setIsDeleting(false);
+        return;
+      }
+
+      setStyleIndex((prev) => prev + 1);
+      setIsDeleting(false);
+      return;
+    }
+
+    const timeout = setTimeout(() => {
+      if (isDeleting) {
+        setText((current) => current.slice(0, -1));
+        return;
+      }
+
+      setText(fullText.slice(0, text.length + 1));
+    }, isDeleting ? 45 : 110);
+
+    return () => clearTimeout(timeout);
+  }, [text, isDeleting, mode, styleIndex, styleVariants.length, fullText]);
+
+  const splitIndex = 4;
+  const currentVariant = mode === 'official'
+    ? { port: "font-display tracking-tight", folio: "font-display tracking-tight" }
+    : styleVariants[styleIndex];
+  const portText = text.slice(0, splitIndex);
+  const folioText = text.slice(splitIndex);
+  const showCursor = !(mode === 'official' && !isDeleting && text === fullText);
+
+  return (
+    <div className="inline-flex items-baseline whitespace-nowrap leading-none">
+      <span className={`text-brand-dark transition-all duration-500 ${currentVariant.port}`}>
+        {portText}
+      </span>
+      <span className={`text-brand-orange transition-all duration-500 ${currentVariant.folio}`}>
+        {folioText}
+      </span>
+      {showCursor && (
+        <motion.span 
+          animate={{ opacity: [1, 0, 1] }}
+          transition={{ duration: 1, repeat: Infinity }}
+          className="ml-2 text-brand-orange font-display"
+        >
+          |
+        </motion.span>
+      )}
     </div>
   );
 }
@@ -162,127 +362,225 @@ function EntryScreen({
   perfil, 
   config, 
   metricas,
-  onLogoClick
+  onLogoClick,
+  showContactForm,
+  setShowContactForm
 }: { 
   onStart: () => void, 
   perfil: any, 
   config: any, 
   metricas: any[],
   onLogoClick: () => void,
+  showContactForm: boolean,
+  setShowContactForm: (show: boolean) => void,
   key?: string
 }) {
   const nomePartes = (perfil?.nomeCompleto || 'Adilson Pinto Amado').split(' ');
   const sobrenomeDestaque = perfil?.destaqueNome || (nomePartes.length > 2 ? nomePartes[1] : nomePartes[nomePartes.length - 1]);
+  const [formData, setFormData] = useState({ nome: '', email: '', telefone: '', mensagem: '' });
+  const [sending, setSending] = useState(false);
+  const [sent, setSent] = useState(false);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSending(true);
+    
+    // Simular envio do formulário
+    await new Promise(resolve => setTimeout(resolve, 1500));
+    
+    setSending(false);
+    setSent(true);
+    setTimeout(() => {
+      setShowContactForm(false);
+      setSent(false);
+      setFormData({ nome: '', email: '', telefone: '', mensagem: '' });
+    }, 2000);
+  };
 
   return (
     <motion.div 
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="flex h-screen w-full flex-col overflow-hidden"
+      className="h-screen w-full overflow-hidden bg-brand-cream"
     >
-      {/* Header */}
-      <header className="flex justify-between p-6 lg:p-10 text-[9px] lg:text-[10px] font-bold tracking-[0.4em] lg:tracking-[0.6em] uppercase opacity-40 shrink-0">
-        <div onClick={onLogoClick} className="cursor-pointer hover:opacity-100 transition-opacity">{config?.nomeAgencia || 'A-DESIGN'}</div>
-        <div className="hidden sm:block">PORTFOLIO {perfil?.anoPortfolio || '2025'}</div>
-      </header>
-
-      {/* Main Content */}
-      <main className="flex-1 flex flex-col justify-center px-6 lg:px-24 max-w-7xl mx-auto w-full overflow-hidden">
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-24 items-center w-full">
-          {/* Left Side: Text and Action */}
-          <div className="lg:col-span-7 flex flex-col text-left order-2 lg:order-1">
+      
+      {/* Conteúdo Principal */}
+      <main className="relative mx-auto flex h-full w-full max-w-7xl items-center px-6 py-6 lg:px-24 lg:py-8">
+        <div className="relative w-full">
+          {/* Lado Esquerdo: Texto e Ação */}
+<div className="relative z-10 flex w-full max-w-2xl flex-col text-left lg:pl-16 xl:pl-20 pt-16 lg:pt-24">
             <motion.div 
               initial={{ x: -25, opacity: 0 }}
               animate={{ x: 0, opacity: 1 }}
-              className="mb-2 lg:mb-3 text-[9px] lg:text-[10px] font-bold tracking-[0.4em] lg:tracking-[0.6em] text-brand-orange uppercase"
+              className="mb-4 lg:mb-8"
             >
-              {perfil.eyebrowEntrada}
-            </motion.div>
-            
-            <motion.div 
-              initial={{ x: -25, opacity: 0 }}
-              animate={{ x: 0, opacity: 1 }}
-              transition={{ delay: 0.1 }}
-              className="flex flex-col text-5xl sm:text-7xl lg:text-8xl font-display font-bold leading-[0.8] text-brand-dark mb-4 tracking-tighter"
-            >
-              <span>{nomePartes[0]}</span>
-              <span className="text-brand-orange">{sobrenomeDestaque}</span>
-              <span>{nomePartes[nomePartes.length - 1] !== sobrenomeDestaque ? nomePartes[nomePartes.length - 1] : ''}</span>
+                            
+              <div className="text-8xl sm:text-9xl lg:text-[10.5rem] font-display font-bold leading-[0.9] text-brand-dark mb-3">
+                <AnimatedPortfolio />
+              </div>
+
+              <p className="max-w-md text-sm lg:text-base leading-relaxed text-brand-dark/80 font-medium mb-6">
+                {perfil?.tagline || 'Criador de identidades visuais que comunicam, vendem e ficam na memoria.'}
+              </p>
+              <div className="flex flex-row gap-4 mb-6">
+                <motion.button
+                  onClick={onStart}
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                  className="flex items-center justify-center bg-brand-orange px-8 py-3 lg:px-10 lg:py-4 text-white transition-all hover:opacity-90 shadow-lg rounded-full"
+                >
+                  <span className="font-bold uppercase tracking-[0.2em] text-[9px] lg:text-[10px]">{perfil?.labelBotaoInicio || 'Começar'}</span>
+                </motion.button>
+                
+                <motion.button
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                  onClick={() => setShowContactForm(true)}
+                  className="flex items-center justify-center bg-brand-dark px-8 py-3 lg:px-10 lg:py-4 text-white transition-all hover:bg-brand-orange shadow-lg rounded-full"
+                >
+                  <span className="font-bold uppercase tracking-[0.2em] text-[9px] lg:text-[10px]">Orçamento</span>
+                </motion.button>
+              </div>
             </motion.div>
 
-            <motion.div 
-               initial={{ scaleX: 0, opacity: 0 }}
-               animate={{ scaleX: 1, opacity: 1 }}
-               transition={{ delay: 0.2 }}
-               className="w-20 lg:w-32 h-1 bg-brand-orange mb-6 lg:mb-8 origin-left"
-            />
+                      </div>
 
-            <motion.p 
+          {/* Lado Direito: Espaço Vazio */}
+          <div className="pointer-events-none absolute inset-y-0 right-0 hidden w-[min(42vw,520px)] items-center justify-end lg:flex">
+            <motion.div 
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
-              transition={{ delay: 0.3 }}
-              className="max-w-md text-sm lg:text-lg leading-relaxed text-brand-dark/70 mb-8 lg:mb-10 font-medium"
+transition={{ delay: 0.3 }}
+              className="relative flex h-[72vh] max-h-[760px] min-h-[520px] w-full max-w-[520px] items-center justify-end gap-2 overflow-visible"
             >
-              {perfil.tagline}
-            </motion.p>
-
-            <motion.button
-              onClick={onStart}
-              whileHover={{ scale: 1.02 }}
-              whileTap={{ scale: 0.98 }}
-              className="group relative flex items-center justify-between bg-brand-dark p-5 lg:p-6 pr-8 lg:pr-10 text-white w-full sm:w-[350px] transition-all hover:bg-brand-orange shadow-2xl"
-            >
-              <span className="font-bold uppercase tracking-[0.3em] lg:tracking-[0.5em] text-[9px] lg:text-[10px] leading-none">{perfil.labelBotaoInicio}</span>
-              <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-4" />
-            </motion.button>
-          </div>
-
-          {/* Right Side: Image and Stats */}
-          <div className="lg:col-span-5 flex flex-col items-center lg:items-end order-1 lg:order-2">
-            <motion.div 
-              initial={{ opacity: 0, scale: 0.9 }}
-              animate={{ opacity: 1, scale: 1 }}
-              transition={{ delay: 0.4 }}
-              className="relative w-full max-w-[220px] sm:max-w-[340px] aspect-[4/5] overflow-hidden grayscale brightness-105 border-b-4 lg:border-b-8 border-brand-orange bg-brand-cream shadow-2xl"
-            >
-              <img 
-                src={perfil.fotografia} 
-                className="h-full w-full object-cover grayscale"
-                referrerPolicy="no-referrer"
-              />
-            </motion.div>
-
-            <motion.div 
-              initial={{ y: 30, opacity: 0 }}
-              animate={{ y: 0, opacity: 1 }}
-              transition={{ delay: 0.5 }}
-              className="mt-6 lg:mt-12 grid grid-cols-3 gap-6 lg:gap-12 w-full max-w-[340px]"
-            >
-              {metricas.slice(0, 3).map((stat) => (
-                <div key={stat.id || stat.legenda} className="flex flex-col border-t border-black/5 pt-3 lg:pt-4 text-left lg:text-right w-full">
-                  <span className="text-xl lg:text-3xl font-display font-bold text-brand-dark leading-none mb-1">{stat.valor}{stat.sufixo}</span>
-                  <span className="text-[7px] lg:text-[8px] font-bold tracking-widest text-brand-orange uppercase leading-tight">
-                    {stat.legenda ? stat.legenda.replace('\n', ' ') : ''}
-                  </span>
-                </div>
-              ))}
+              <div className="pointer-events-none absolute bottom-[-400px] right-[-200px] z-10 h-[140vh] max-h-[1400px] min-h-[1000px] w-[1400px]">
+                <div className="absolute inset-x-[10%] bottom-8 h-20 rounded-full bg-brand-dark/15 blur-2xl" />
+<img
+                  src={perfil?.fotografia || adPortrait}
+                  alt={perfil?.nomeCompleto || 'Retrato principal'}
+                  className="absolute -bottom-36 -right-12 h-full w-auto max-w-none origin-bottom-right scale-[1.18] object-contain object-[center_30%] drop-shadow-[0_30px_45px_rgba(13,21,32,0.22)]"
+                  style={{
+                    WebkitMaskImage: 'linear-gradient(to bottom, black 0%, black 22%, rgba(0,0,0,0.98) 28%, rgba(0,0,0,0.68) 34%, rgba(0,0,0,0.18) 42%, transparent 52%)',
+                    maskImage: 'linear-gradient(to bottom, black 0%, black 22%, rgba(0,0,0,0.98) 28%, rgba(0,0,0,0.68) 34%, rgba(0,0,0,0.18) 42%, transparent 52%)',
+                  }}
+                  draggable={false}
+                />
+              </div>
             </motion.div>
           </div>
         </div>
       </main>
 
-      {/* Footer */}
-      <footer className="p-6 lg:p-10 flex justify-center items-center bg-white shrink-0">
-        <div className="flex items-center gap-4 text-[9px] lg:text-[10px] font-bold tracking-[0.3em] uppercase opacity-30 text-center flex-wrap justify-center">
-          {config?.servicosRodape?.split(',').map((s: string, i: number, arr: any[]) => (
-            <React.Fragment key={s}>
-              <span>{s.trim()}</span>
-              {i < arr.length - 1 && <span className="text-brand-orange">•</span>}
-            </React.Fragment>
-          ))}
+      {/* Visual Identity Tags - Bottom Left */}
+      <button
+        type="button"
+        onClick={onLogoClick}
+        className="fixed bottom-4 left-12 z-20 flex flex-col items-start text-left"
+      >
+        <div className="flex items-center gap-2 mb-2">
+          <div className="w-12 h-0.5 bg-brand-orange" />
         </div>
-      </footer>
+        <div className="flex flex-col gap-0.5">
+          <span className="text-[6px] lg:text-[7px] font-bold tracking-widest uppercase text-brand-dark">IDENTIDADE VISUAL</span>
+          <span className="text-[6px] lg:text-[7px] font-bold tracking-widest uppercase text-brand-dark">BRANDING</span>
+          <span className="text-[6px] lg:text-[7px] font-bold tracking-widest uppercase text-brand-dark">DESIGN</span>
+        </div>
+      </button>
+
+      {/* Modal Formulário de Contacto */}
+      <AnimatePresence>
+        {showContactForm && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[300] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4"
+            onClick={() => setShowContactForm(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="bg-white rounded-2xl shadow-2xl w-full max-w-lg p-6 lg:p-8"
+              onClick={e => e.stopPropagation()}
+            >
+              {sent ? (
+                <div className="text-center py-8">
+                  <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <CheckCircle2 className="h-8 w-8 text-green-600" />
+                  </div>
+                  <h3 className="text-xl font-bold text-brand-dark mb-2">Mensagem Enviada!</h3>
+                  <p className="text-brand-dark/60">Obrigado pelo contacto. Vou responder em breve.</p>
+                </div>
+              ) : (
+                <>
+                  <div className="flex items-center justify-between mb-6">
+                    <h3 className="text-xl lg:text-2xl font-display font-bold uppercase text-brand-dark">Solicitar Orçamento</h3>
+                    <button onClick={() => setShowContactForm(false)} className="p-2 hover:bg-brand-cream rounded-full">
+                      <X className="h-5 w-5 text-brand-dark" />
+                    </button>
+                  </div>
+                  <form onSubmit={handleSubmit} className="space-y-4">
+                    <div>
+                      <label className="block text-xs font-bold uppercase tracking-widest text-brand-dark/60 mb-1">Nome *</label>
+                      <input
+                        type="text"
+                        required
+                        value={formData.nome}
+                        onChange={e => setFormData({ ...formData, nome: e.target.value })}
+                        className="w-full px-4 py-3 border border-brand-dark/10 rounded-xl focus:outline-none focus:border-brand-orange"
+                        placeholder="O seu nome"
+                      />
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-xs font-bold uppercase tracking-widest text-brand-dark/60 mb-1">Email</label>
+                        <input
+                          type="email"
+                          value={formData.email}
+                          onChange={e => setFormData({ ...formData, email: e.target.value })}
+                          className="w-full px-4 py-3 border border-brand-dark/10 rounded-xl focus:outline-none focus:border-brand-orange"
+                          placeholder="seu@email.com"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-bold uppercase tracking-widest text-brand-dark/60 mb-1">Telefone</label>
+                        <input
+                          type="tel"
+                          value={formData.telefone}
+                          onChange={e => setFormData({ ...formData, telefone: e.target.value })}
+                          className="w-full px-4 py-3 border border-brand-dark/10 rounded-xl focus:outline-none focus:border-brand-orange"
+                          placeholder="+244 900 000 000"
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold uppercase tracking-widest text-brand-dark/60 mb-1">Mensagem *</label>
+                      <textarea
+                        required
+                        rows={4}
+                        value={formData.mensagem}
+                        onChange={e => setFormData({ ...formData, mensagem: e.target.value })}
+                        className="w-full px-4 py-3 border border-brand-dark/10 rounded-xl focus:outline-none focus:border-brand-orange resize-none"
+                        placeholder="Conte-me mais sobre o seu projeto..."
+                      />
+                    </div>
+                    <button
+                      type="submit"
+                      disabled={sending}
+                      className="w-full bg-brand-orange text-white font-bold uppercase tracking-widest py-4 rounded-xl hover:opacity-90 transition-all disabled:opacity-50"
+                    >
+                      {sending ? 'A enviar...' : 'Enviar Mensagem'}
+                    </button>
+                  </form>
+                </>
+              )}
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
     </motion.div>
   );
 }
@@ -328,6 +626,7 @@ function PresentationMode({
   parceiros: any[];
   config: any;
   slideConfigs: any[];
+  quemSou: any;
   key?: string;
 }) {
   const slides = [
@@ -348,7 +647,7 @@ function PresentationMode({
     'bg-brand-orange', // 03
     'bg-white',        // 04
     'bg-brand-cream',  // 05
-    'bg-white',        // 09 (Partners)
+    'bg-white',        // 09 (Parceiros)
     'bg-brand-dark',   // 06
     'bg-white',        // 07
     'bg-brand-orange'  // 08
@@ -373,7 +672,7 @@ function PresentationMode({
           onClick={onClose}
           className={`flex items-center gap-2 uppercase tracking-[0.3em] font-bold text-[9px] pointer-events-auto transition-all hover:scale-110 ${isAlt ? 'text-white' : 'text-brand-dark'}`}
         >
-          <span>SAIR</span>
+          <span>Sair</span>
           <X className="h-3 w-3" />
         </button>
       </div>
@@ -471,25 +770,27 @@ function Slide01WhoIAm({ quemSou, slideConfig }: { quemSou: any, slideConfig?: a
   const titleText = slideConfig?.titulo || 'QUEM SOU';
   const eyebrowText = slideConfig?.eyebrow || 'Quem Sou';
   return (
-    <SlideWrapper eyebrow={eyebrowText} title={<>{quemSou?.nomePrimeiraLinha || 'Adilson'} <br /> {quemSou?.nomeDestaque || 'Pinto'}</>} isDark>
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-20 items-start lg:items-center flex-1 h-full mt-2 lg:mt-4">
-        <div className="lg:col-span-1 border-l border-white/20 h-full hidden lg:block" />
-        <div className="lg:col-span-6 text-white flex flex-col justify-center">
-          <p className="text-xs lg:text-xl lg:opacity-90 leading-relaxed font-medium">
-             {quemSou?.biografia || 'Designer com experiência em identidade visual e comunicação criativa.'}
-          </p>
-          <div className="mt-4 lg:mt-12 flex gap-2 lg:gap-3 flex-wrap">
-            {(quemSou?.tags || ['IDENTIDADE VISUAL', 'BRANDING', 'DESIGN']).map(t => (
-              <span key={t} className="bg-brand-orange/10 border border-brand-orange/20 text-brand-orange px-3 lg:px-6 py-1.5 lg:py-2.5 font-bold text-[7px] lg:text-[10px] tracking-widest uppercase rounded-full">
-                {t}
-              </span>
-            ))}
+    <SlideWrapper eyebrow={eyebrowText} title={<>{quemSou?.nomePrimeiraLinha || 'Adilson'} {quemSou?.nomeDestaque || 'Pinto'}</>} isDark>
+      <div className="relative h-full w-full">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-20 items-start lg:items-center flex-1 h-full mt-2 lg:mt-4">
+          <div className="lg:col-span-1 border-l border-white/20 h-full hidden lg:block" />
+          <div className="lg:col-span-6 text-white flex flex-col justify-center">
+            <p className="text-[10px] lg:text-lg lg:opacity-90 leading-relaxed font-normal text-justify">
+               {quemSou?.biografia || 'Designer com experiência em identidade visual e comunicação criativa.'}
+            </p>
+            <div className="mt-4 lg:mt-12 flex gap-2 lg:gap-3 flex-wrap">
+              {(quemSou?.tags || ['IDENTIDADE VISUAL', 'BRANDING', 'DESIGN']).map(t => (
+                <span key={t} className="bg-brand-orange/10 border border-brand-orange/20 text-brand-orange px-3 lg:px-6 py-1.5 lg:py-2.5 font-bold text-[7px] lg:text-[10px] tracking-widest uppercase rounded-full">
+                  {t}
+                </span>
+              ))}
+            </div>
           </div>
         </div>
-        <div className="lg:col-span-5 flex justify-center lg:justify-end">
-          <div className="w-full max-w-[140px] sm:max-w-[320px] aspect-[4/5] overflow-hidden grayscale border border-white/10 shadow-2xl brightness-105">
+        <div className="fixed top-1/2 -translate-y-2/3 -translate-y-24 lg:-translate-y-32 right-18 lg:right-36 z-50">
+          <div className="w-full max-w-[140px] sm:max-w-[320px] aspect-[4/5] overflow-hidden grayscale border border-white/10 shadow-2xl brightness-105 p-2 rounded-lg bg-brand-cream">
             {quemSou?.fotografia ? (
-              <img src={quemSou.fotografia} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+              <img src={quemSou?.fotografia} className="w-full h-full object-cover object-center scale-120 translate-y-[60px] lg:translate-y-[70px]" referrerPolicy="no-referrer" />
             ) : (
               <div className="w-full h-full bg-brand-dark/50 flex items-center justify-center text-white/30">Sem foto</div>
             )}
@@ -536,10 +837,9 @@ function Slide03Results({ metricas, slideConfig }: { metricas: any[], slideConfi
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 lg:gap-4 flex-1">
         {metricas.map(m => (
           <div key={m.id || m.legenda} className="bg-black/10 p-5 lg:p-10 flex flex-col justify-between border border-white/10 group hover:bg-black/20 transition-all">
-            <div className="text-[8px] lg:text-[10px] font-bold tracking-[0.3em] lg:tracking-[0.4em] opacity-40 uppercase mb-4 lg:mb-8">STAT {String(m.id || '').padStart(2, '0')}</div>
+            <div className="text-[8px] lg:text-[10px] font-bold tracking-[0.3em] lg:tracking-[0.4em] text-white uppercase mb-4 lg:mb-8">{m.legenda}</div>
             <div>
               <span className="block text-2xl lg:text-6xl font-display font-bold text-white mb-1 lg:mb-2 leading-none whitespace-nowrap">{m.valor}{m.sufixo}</span>
-              <span className="block text-[8px] lg:text-[10px] font-bold tracking-widest uppercase text-white/50 leading-tight">{m.legenda}</span>
             </div>
           </div>
         ))}
@@ -552,39 +852,265 @@ function Slide03Results({ metricas, slideConfig }: { metricas: any[], slideConfi
 function Slide04Portfolio({ projectos, slideConfig }: { projectos: any[], slideConfig?: any }) {
   const titleText = slideConfig?.titulo || 'PROJETOS';
   const eyebrowText = slideConfig?.eyebrow || 'Trabalhos';
+  const [selectedProject, setSelectedProject] = useState<any>(null);
+  const [currentImageIndex, setCurrentImageIndex] = useState(0);
+
+  const openProjectModal = (project: any) => {
+    setSelectedProject(project);
+    setCurrentImageIndex(0);
+    analytics.trackProjectClick(project.id || project.titulo);
+  };
+
+  const closeModal = () => {
+    setSelectedProject(null);
+    setCurrentImageIndex(0);
+  };
+
+  const nextImage = () => {
+    const images = getProjectImages(selectedProject);
+    if (images.length > 0) {
+      setCurrentImageIndex((prev) => (prev + 1) % images.length);
+    }
+  };
+
+  const prevImage = () => {
+    const images = getProjectImages(selectedProject);
+    if (images.length > 0) {
+      setCurrentImageIndex((prev) => (prev - 1 + images.length) % images.length);
+    }
+  };
+
+  const getProjectImages = (project: any) => {
+    if (project?.imagens && Array.isArray(project.imagens)) {
+      return project.imagens;
+    }
+    if (project?.imagemDestaque) {
+      return Array.isArray(project.imagemDestaque) ? project.imagemDestaque : [project.imagemDestaque];
+    }
+    return [];
+  };
+
+  const getImageSrc = (url: string, index: number) => {
+    const separator = url.includes('?') ? '&' : '?';
+    return `${url}${separator}_t=${index}-${Date.now()}`;
+  };
+
   return (
-    <SlideWrapper eyebrow={eyebrowText} title={titleText}>
-      <div className="grid grid-cols-2 lg:grid-cols-3 gap-1 bg-black/5 border border-black/5 flex-1">
-        {projectos.slice(0, 4).map((p, idx) => (
-          <div 
-            key={p.id || p.titulo} 
-            className={`group bg-white flex flex-col justify-between p-4 lg:p-10 transition-all hover:bg-brand-orange hover:text-white cursor-pointer relative overflow-hidden h-full ${idx > 1 ? 'hidden lg:flex' : 'flex'}`}
+    <>
+      <SlideWrapper eyebrow={eyebrowText} title={titleText}>
+        <div className="grid grid-cols-2 lg:grid-cols-3 gap-1 bg-black/5 border border-black/5 flex-1">
+          {projectos.slice(0, 4).map((p, idx) => (
+            <div 
+              key={p.id || p.titulo} 
+              className={`group bg-white flex flex-col justify-between p-4 lg:p-10 transition-all hover:bg-brand-orange hover:text-white cursor-pointer relative overflow-hidden h-full ${idx > 1 ? 'hidden lg:flex' : 'flex'}`}
+              onClick={() => openProjectModal(p)}
+            >
+              <div className="absolute top-0 right-0 p-3 lg:p-6 text-[8px] lg:text-[10px] font-bold tracking-[0.2em] lg:tracking-[0.3em] opacity-20 uppercase">
+                {String(p.id || '').padStart(2, '0')}
+              </div>
+              
+              <div className="mb-2">
+                <p className="text-brand-orange text-[7px] lg:text-[9px] font-bold tracking-widest uppercase mb-1 lg:mb-2 group-hover:text-white transition-colors truncate">{p.categoria}</p>
+                <h4 className="text-base lg:text-3xl font-display font-bold uppercase mb-2 lg:mb-4 tracking-tighter leading-none truncate">{p.titulo}</h4>
+                <div className="w-6 lg:w-8 h-[1px] lg:h-0.5 bg-black/10 group-hover:bg-white/40 transition-colors" />
+              </div>
+
+              <div className="aspect-[3/4] w-full overflow-hidden grayscale group-hover:grayscale-0 transition-all duration-700">
+                {(() => {
+                  const imageUrl = Array.isArray(p.imagemDestaque) ? p.imagemDestaque[0] : p.imagemDestaque;
+
+                  if (!imageUrl) {
+                    return <div className="flex h-full w-full items-center justify-center bg-black/5 text-[10px] font-bold uppercase tracking-[0.3em] text-black/30">Sem imagem</div>;
+                  }
+
+                  return (
+                    <img
+                      src={imageUrl}
+                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700"
+                      referrerPolicy="no-referrer"
+                    />
+                  );
+                })()}
+              </div>
+
+              <div className="mt-2 lg:mt-8 hidden sm:block">
+                 <p className="text-[8px] lg:text-xs opacity-50 font-bold uppercase tracking-widest truncate">{p.nomeClient || p.nomeCliente}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      </SlideWrapper>
+
+      {/* Modal de Detalhes do Projeto */}
+      <AnimatePresence>
+        {selectedProject && (
+<motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[300] bg-black/90 backdrop-blur-sm flex items-center justify-center p-2 sm:p-4 lg:p-6"
+            onClick={closeModal}
           >
-            <div className="absolute top-0 right-0 p-3 lg:p-6 text-[8px] lg:text-[10px] font-bold tracking-[0.2em] lg:tracking-[0.3em] opacity-20 uppercase">
-              {String(p.id || '').padStart(2, '0')}
-            </div>
-            
-            <div className="mb-2">
-              <p className="text-brand-orange text-[7px] lg:text-[9px] font-bold tracking-widest uppercase mb-1 lg:mb-2 group-hover:text-white transition-colors truncate">{p.categoria}</p>
-              <h4 className="text-base lg:text-3xl font-display font-bold uppercase mb-2 lg:mb-4 tracking-tighter leading-none truncate">{p.titulo}</h4>
-              <div className="w-6 lg:w-8 h-[1px] lg:h-0.5 bg-black/10 group-hover:bg-white/40 transition-colors" />
-            </div>
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              transition={{ type: "spring", stiffness: 300, damping: 30 }}
+              className="bg-white w-full h-[98vh] sm:h-[95vh] max-w-7xl rounded-2xl shadow-2xl flex flex-col overflow-hidden"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Cabeçalho do Modal */}
+              <div className="bg-brand-dark text-white p-2 sm:p-3 lg:p-4 flex items-center justify-between shrink-0">
+                <div className="min-w-0 flex-1">
+                  <p className="text-brand-orange text-[6px] sm:text-[7px] lg:text-[9px] font-bold tracking-widest uppercase mb-0.5 truncate">{selectedProject.categoria}</p>
+                  <h3 className="text-base sm:text-xl lg:text-3xl font-display font-bold uppercase tracking-tighter leading-none truncate">{selectedProject.titulo}</h3>
+                  <p className="text-[10px] sm:text-xs lg:text-sm opacity-80 truncate">{selectedProject.nomeClient || selectedProject.nomeCliente}</p>
+                </div>
+                <button
+                  onClick={closeModal}
+                  className="p-1 sm:p-1.5 hover:bg-white/10 rounded-full transition-colors shrink-0 ml-2"
+                >
+                  <X className="h-4 w-4 sm:h-5 sm:w-5" />
+                </button>
+              </div>
 
-            <div className="aspect-[3/4] w-full overflow-hidden grayscale group-hover:grayscale-0 transition-all duration-700">
-               <img 
-                 src={p.imagemDestaque} 
-                 className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" 
-                 referrerPolicy="no-referrer" 
-               />
-            </div>
+              {/* Conteúdo do Modal - Sem scroll */}
+              <div className="flex flex-col lg:flex-row flex-1 min-h-0">
+                {/* Carrossel de Imagens - Completo sem scroll */}
+                <div className="lg:w-3/5 bg-black relative flex items-center justify-center h-[40vh] sm:h-[50vh] lg:h-auto">
+                  {getProjectImages(selectedProject).length > 0 ? (
+                    <>
+                      <div className="relative w-full h-full flex items-center justify-center">
+                        <img
+                          src={getImageSrc(getProjectImages(selectedProject)[currentImageIndex], currentImageIndex)}
+                          alt={`${selectedProject.titulo} - Imagem ${currentImageIndex + 1}`}
+                          className="max-w-full max-h-full object-contain"
+                          referrerPolicy="no-referrer"
+                        />
+                        
+                        {/* Controles do Carrossel */}
+                        {getProjectImages(selectedProject).length > 1 && (
+                          <>
+                            <button
+                              aria-label="Imagem anterior"
+                              onClick={prevImage}
+                              className="absolute left-2 sm:left-4 top-1/2 -translate-y-1/2 bg-white/20 backdrop-blur-sm text-white p-2 sm:p-3 rounded-full hover:bg-white/30 transition-colors"
+                            >
+                              <ChevronLeft className="h-4 w-4 sm:h-5 sm:w-5" />
+                            </button>
+                            <button
+                              aria-label="Próxima imagem"
+                              onClick={nextImage}
+                              className="absolute right-2 sm:right-4 top-1/2 -translate-y-1/2 bg-white/20 backdrop-blur-sm text-white p-2 sm:p-3 rounded-full hover:bg-white/30 transition-colors"
+                            >
+                              <ChevronRight className="h-4 w-4 sm:h-5 sm:w-5" />
+                            </button>
+                            
+                            {/* Indicadores */}
+                            <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-1.5 sm:gap-2">
+                              {getProjectImages(selectedProject).map((_, index) => (
+                                <button
+                                  key={index}
+                                  onClick={() => setCurrentImageIndex(index)}
+                                  className={`h-1.5 sm:h-2 rounded-full transition-all ${
+                                    index === currentImageIndex ? 'bg-brand-orange w-6 sm:w-8' : 'bg-white/50 w-1.5 sm:w-2'
+                                  }`}
+                                />
+                              ))}
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    </>
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center bg-black/20">
+                      <p className="text-white/50 text-sm">Sem imagens disponíveis</p>
+                    </div>
+                  )}
+                </div>
 
-            <div className="mt-2 lg:mt-8 hidden sm:block">
-               <p className="text-[8px] lg:text-xs opacity-50 font-bold uppercase tracking-widest truncate">{p.nomeClient || p.nomeCliente}</p>
-            </div>
-          </div>
-        ))}
-      </div>
-    </SlideWrapper>
+{/* Painel de Informações - Layout organizado em grid */}
+                <div className="lg:w-2/5 p-2 sm:p-3 lg:p-4 flex flex-col">
+                  <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-x-3 gap-y-2 sm:gap-x-4 sm:gap-y-3 content-start">
+                    {/* Cliente */}
+                    {selectedProject.nomeCliente && (
+                      <div className="col-span-2">
+                        <h4 className="text-brand-orange text-[6px] sm:text-[7px] lg:text-[8px] font-bold tracking-widest uppercase mb-0.5">CLIENTE</h4>
+                        <p className="text-brand-dark text-xs sm:text-sm font-medium">{selectedProject.nomeCliente}</p>
+                      </div>
+                    )}
+
+                    {/* Ano e Agência lado a lado */}
+                    <div className="flex gap-3 col-span-2">
+                      {selectedProject.ano && (
+                        <div className="flex-1">
+                          <h4 className="text-brand-orange text-[6px] sm:text-[7px] lg:text-[8px] font-bold tracking-widest uppercase mb-0.5">ANO</h4>
+                          <p className="text-brand-dark text-xs sm:text-sm font-medium">{selectedProject.ano}</p>
+                        </div>
+                      )}
+                      {selectedProject.agencia && (
+                        <div className="flex-1">
+                          <h4 className="text-brand-orange text-[6px] sm:text-[7px] lg:text-[8px] font-bold tracking-widest uppercase mb-0.5">AGÊNCIA</h4>
+                          <p className="text-brand-dark text-xs sm:text-sm font-medium">{selectedProject.agencia}</p>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Duração */}
+                    {selectedProject.duracao && (
+                      <div>
+                        <h4 className="text-brand-orange text-[6px] sm:text-[7px] lg:text-[8px] font-bold tracking-widest uppercase mb-0.5">DURAÇÃO</h4>
+                        <p className="text-brand-dark text-xs sm:text-sm font-medium">{selectedProject.duracao}</p>
+                      </div>
+                    )}
+
+                    {/* Concepto - ocupa largura total */}
+                    {selectedProject.concepto && (
+                      <div className="col-span-2">
+                        <h4 className="text-brand-orange text-[6px] sm:text-[7px] lg:text-[8px] font-bold tracking-widest uppercase mb-0.5">CONCEPTO</h4>
+                        <p className="text-brand-dark text-xs sm:text-sm leading-relaxed">{selectedProject.concepto}</p>
+                      </div>
+                    )}
+
+                    {/* Ferramentas - ocupa largura total */}
+                    {selectedProject.ferramentas && selectedProject.ferramentas.length > 0 && (
+                      <div className="col-span-2">
+                        <h4 className="text-brand-orange text-[6px] sm:text-[7px] lg:text-[8px] font-bold tracking-widest uppercase mb-1">FERRAMENTAS</h4>
+                        <div className="flex flex-wrap gap-1">
+                          {selectedProject.ferramentas.map((ferramenta: string, index: number) => (
+                            <span key={index} className="bg-brand-dark text-white px-2 py-0.5 font-bold text-[5px] sm:text-[6px] lg:text-[7px] tracking-widest uppercase rounded-full">
+                              {ferramenta}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Cores - ocupa largura total */}
+                    {selectedProject.cores && selectedProject.cores.length > 0 && (
+                      <div className="col-span-2">
+                        <h4 className="text-brand-orange text-[6px] sm:text-[7px] lg:text-[8px] font-bold tracking-widest uppercase mb-1">PALETA DE CORES</h4>
+                        <div className="flex flex-wrap gap-1.5">
+                          {selectedProject.cores.map((cor: string, index: number) => (
+                            <div key={index} className="flex items-center gap-1 bg-brand-cream/50 px-2 py-1 rounded">
+                              <div 
+                                className="w-3 h-3 rounded-full border border-black/10" 
+                                style={{ backgroundColor: cor }}
+                              />
+                              <span className="text-brand-dark text-[5px] sm:text-[6px] lg:text-[7px] font-medium uppercase">{cor}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </>
   );
 }
 
@@ -723,7 +1249,7 @@ function Slide07Tools({ ferramentas, config, slideConfig }: { ferramentas: any[]
             <div className="text-[10px] font-bold tracking-[0.5em] text-brand-orange uppercase">Processo de Trabalho</div>
           </div>
           <p className="text-xs lg:text-xl font-bold uppercase tracking-[0.1em] text-brand-dark leading-tight max-w-3xl">
-            {config.processoTrabalho}
+            {config?.processoTrabalho || 'Processo de trabalho: Briefing, Conceito, Desenvolvimento, Revisao e Entrega.'}
           </p>
        </div>
     </SlideWrapper>
@@ -782,9 +1308,38 @@ function Slide08Contact({
   slideConfig?: any
 }) {
   const titleText = slideConfig?.titulo || 'CONECTAR E CRIAR';
-  const eyebrowText = slideConfig?.eyebrow || config.etiquetaRodapeContacto || 'Vamos Conversar';
+  const eyebrowText = slideConfig?.eyebrow || config?.etiquetaRodapeContacto || 'Vamos Conversar';
   const titleParts = titleText.split(' ');
   const halfIdx = Math.ceil(titleParts.length / 2);
+  const [showContactForm, setShowContactForm] = useState(false);
+  const [formData, setFormData] = useState({ nome: '', email: '', telefone: '', mensagem: '' });
+  const [sending, setSending] = useState(false);
+  const [sent, setSent] = useState(false);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSending(true);
+    try {
+      const { addMensagem } = await import('./lib/supabase-db');
+      await addMensagem({
+        nome: formData.nome,
+        email: formData.email,
+        telefone: formData.telefone,
+        mensagem: formData.mensagem,
+        tipo_origem: 'site',
+      });
+      setSent(true);
+      setTimeout(() => {
+        setShowContactForm(false);
+        setSent(false);
+        setFormData({ nome: '', email: '', telefone: '', mensagem: '' });
+      }, 2000);
+    } catch (error) {
+      console.error('Erro ao enviar mensagem:', error);
+    } finally {
+      setSending(false);
+    }
+  };
 
   return (
     <SlideWrapper eyebrow={eyebrowText} title={<>{titleParts.slice(0, halfIdx).join(' ')} <br /> {titleParts.slice(halfIdx).join(' ')}</>} isOrange>
@@ -794,28 +1349,32 @@ function Slide08Contact({
              <div 
               key={c.id || c.valor} 
               className="group flex items-center justify-between bg-black/10 p-4 lg:p-8 transition-all hover:bg-black/30 cursor-pointer"
-              onClick={() => window.open(c.link, '_blank')}
+              onClick={() => {
+                analytics.trackContactClick(c.id || c.valor, c.tipo);
+                window.open(c.link, '_blank');
+              }}
              >
-                <div className="flex items-center gap-4 lg:gap-8">
-                  <div className="text-white group-hover:text-brand-orange transition-colors scale-75 lg:scale-100">
-                    {c.tipo === 'email' && <Mail className="h-6 w-6" />}
-                    {c.tipo === 'whatsapp' && <Phone className="h-6 w-6" />}
-                    {c.tipo === 'instagram' && <Instagram className="h-6 w-6" />}
-                  </div>
-                  <div>
-                    <p className="text-[7px] lg:text-[9px] font-bold uppercase tracking-[0.2em] lg:tracking-[0.3em] text-white/40 mb-1 leading-none">{c.etiqueta}</p>
-                    <p className="text-sm lg:text-3xl font-display font-bold text-white transition-colors leading-none tracking-tighter truncate max-w-[200px] lg:max-w-none">{c.valor}</p>
-                  </div>
-                </div>
-                <ArrowRight className="h-4 w-4 lg:h-6 lg:w-6 opacity-0 group-hover:opacity-100 transition-all text-white -rotate-45" />
+               <div className="flex items-center gap-4 lg:gap-8">
+                 <div className="text-white group-hover:text-brand-orange transition-colors scale-75 lg:scale-100">
+                   {c.tipo === 'email' && <Mail className="h-6 w-6" />}
+                   {c.tipo === 'whatsapp' && <Phone className="h-6 w-6" />}
+                   {c.tipo === 'instagram' && <Instagram className="h-6 w-6" />}
+                 </div>
+                 <div>
+                   <p className="text-[7px] lg:text-[9px] font-bold uppercase tracking-[0.2em] lg:tracking-[0.3em] text-white/40 mb-1 leading-none">{c.etiqueta}</p>
+                   <p className="text-sm lg:text-3xl font-display font-bold text-white transition-colors leading-none tracking-tighter truncate max-w-[200px] lg:max-w-none">{c.valor}</p>
+                 </div>
+               </div>
+               <ArrowRight className="h-4 w-4 lg:h-6 lg:w-6 opacity-0 group-hover:opacity-100 transition-all text-white -rotate-45" />
              </div>
           ))}
         </div>
 
-        <div className="lg:col-span-5">
+        <div className="lg:col-span-5 space-y-3">
            <motion.button 
             whileHover={{ scale: 1.02 }}
             whileTap={{ scale: 0.98 }}
+            onClick={() => setShowContactForm(true)}
             className="group flex flex-col gap-4 lg:gap-8 bg-brand-dark p-6 lg:p-12 text-white w-full shadow-2xl hover:bg-white hover:text-brand-orange transition-all relative overflow-hidden"
           >
             <div className="absolute top-0 right-0 p-4 lg:p-8 opacity-10">
@@ -823,12 +1382,117 @@ function Slide08Contact({
             </div>
             <div className="text-[8px] lg:text-[10px] font-bold tracking-[0.3em] lg:tracking-[0.5em] uppercase opacity-40">PRÓXIMO PASSO</div>
             <div className="flex items-center gap-3 lg:gap-4">
-              <span className="font-display font-bold uppercase tracking-tight text-xl lg:text-4xl text-left leading-none">{perfil.labelBotaoAcaoFinal || 'Solicitar Orçamento'}</span>
+              <span className="font-display font-bold uppercase tracking-tight text-xl lg:text-4xl text-left leading-none">{perfil?.labelBotaoAcaoFinal || 'Solicitar Orcamento'}</span>
               <ArrowRight className="h-5 w-5 lg:h-8 lg:w-8 transition-transform group-hover:translate-x-4 shrink-0" />
             </div>
           </motion.button>
+
+          <motion.button
+            whileHover={{ scale: 1.02 }}
+            whileTap={{ scale: 0.98 }}
+            onClick={() => {
+              window.print();
+            }}
+            className="flex items-center justify-center gap-3 bg-brand-orange text-white px-6 py-4 w-full shadow-lg hover:opacity-90 transition-all rounded-xl"
+          >
+            <FileDown className="h-5 w-5" />
+            <span className="font-bold uppercase tracking-widest text-sm">Imprimir / Guardar PDF</span>
+          </motion.button>
         </div>
       </div>
+
+      {/* Modal Formulário de Contacto */}
+      <AnimatePresence>
+        {showContactForm && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[300] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4"
+            onClick={() => setShowContactForm(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="bg-white rounded-2xl shadow-2xl w-full max-w-lg p-6 lg:p-8"
+              onClick={e => e.stopPropagation()}
+            >
+              {sent ? (
+                <div className="text-center py-8">
+                  <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <CheckCircle2 className="h-8 w-8 text-green-600" />
+                  </div>
+                  <h3 className="text-xl font-bold text-brand-dark mb-2">Mensagem Enviada!</h3>
+                  <p className="text-brand-dark/60">Obrigado pelo contacto. Vou responder em breve.</p>
+                </div>
+              ) : (
+                <>
+                  <div className="flex items-center justify-between mb-6">
+                    <h3 className="text-xl lg:text-2xl font-display font-bold uppercase text-brand-dark">Solicitar Orçamento</h3>
+                    <button onClick={() => setShowContactForm(false)} className="p-2 hover:bg-brand-cream rounded-full">
+                      <X className="h-5 w-5 text-brand-dark" />
+                    </button>
+                  </div>
+                  <form onSubmit={handleSubmit} className="space-y-4">
+                    <div>
+                      <label className="block text-xs font-bold uppercase tracking-widest text-brand-dark/60 mb-1">Nome *</label>
+                      <input
+                        type="text"
+                        required
+                        value={formData.nome}
+                        onChange={e => setFormData({ ...formData, nome: e.target.value })}
+                        className="w-full px-4 py-3 border border-brand-dark/10 rounded-xl focus:outline-none focus:border-brand-orange"
+                        placeholder="O seu nome"
+                      />
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-xs font-bold uppercase tracking-widest text-brand-dark/60 mb-1">Email</label>
+                        <input
+                          type="email"
+                          value={formData.email}
+                          onChange={e => setFormData({ ...formData, email: e.target.value })}
+                          className="w-full px-4 py-3 border border-brand-dark/10 rounded-xl focus:outline-none focus:border-brand-orange"
+                          placeholder="seu@email.com"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-bold uppercase tracking-widest text-brand-dark/60 mb-1">Telefone</label>
+                        <input
+                          type="tel"
+                          value={formData.telefone}
+                          onChange={e => setFormData({ ...formData, telefone: e.target.value })}
+                          className="w-full px-4 py-3 border border-brand-dark/10 rounded-xl focus:outline-none focus:border-brand-orange"
+                          placeholder="+244 900 000 000"
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold uppercase tracking-widest text-brand-dark/60 mb-1">Mensagem *</label>
+                      <textarea
+                        required
+                        rows={4}
+                        value={formData.mensagem}
+                        onChange={e => setFormData({ ...formData, mensagem: e.target.value })}
+                        className="w-full px-4 py-3 border border-brand-dark/10 rounded-xl focus:outline-none focus:border-brand-orange resize-none"
+                        placeholder="Conte-me mais sobre o seu projeto..."
+                      />
+                    </div>
+                    <button
+                      type="submit"
+                      disabled={sending}
+                      className="w-full bg-brand-orange text-white font-bold uppercase tracking-widest py-4 rounded-xl hover:opacity-90 transition-all disabled:opacity-50"
+                    >
+                      {sending ? 'A enviar...' : 'Enviar Mensagem'}
+                    </button>
+                  </form>
+                </>
+              )}
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </SlideWrapper>
   );
 }

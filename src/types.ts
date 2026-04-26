@@ -25,7 +25,7 @@ export interface Servico {
 
 export interface Projecto {
   id: string;
-  imagemDestaque: string;
+  imagemDestaque: string[];
   titulo: string;
   nomeCliente: string;
   categoria: string;
